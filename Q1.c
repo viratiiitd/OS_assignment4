@@ -1,45 +1,129 @@
-#include <stdio.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <unistd.h>
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#define N 5
+#define THINKING 2
+#define HUNGRY 1
+#define EATING 0
 
+pthread_mutex_t mutex;
+pthread_cond_t cond[N];
+pthread_mutex_t bowl_mutex;
+pthread_cond_t bowl_cond;
+int state[N];
+int phil[N] = {0, 1, 2, 3, 4};
+int bowls_available = 2;
 
-
-void *philosopher(void *arg){
-    int i,shared_variable = 0 ;
-    for (i = 0; i < 10; i++) {
-        // Acquire the lock
-        pthread_mutex_lock(&mutex);
-
-        // Access the shared resource
-        shared_variable++;
-        printf("Thread %ld: shared_variable = %d\n", (long)arg, shared_variable);
-
-        // Release the lock
-        pthread_mutex_unlock(&mutex);
-    }
-    return NULL;
+void eating(int phnum)
+{
+    printf("Philosopher %d is Eating\n", phnum + 1);
+    sleep(2);
 }
 
-int main() {
-    pthread_t thread0, thread1, thread2, thread3, thread4;
+void thinking(int phnum)
+{
+    printf("Philosopher %d is Thinking\n", phnum + 1);
+    sleep(1);
+}
 
-    // Create two threads
-    for(int i = 0 ; i < 5 ; i++){
-        pthread_create(&thread0, NULL, philosopher, (void*)i);
-        pthread_create(&thread1, NULL, philosopher, (void*)i);
-        pthread_create(&thread2, NULL, philosopher, (void*)i);
-        pthread_create(&thread3, NULL, philosopher, (void*)i);
-        pthread_create(&thread4, NULL, philosopher, (void*)i);
+void test(int phnum)
+{
+    if (state[phnum] == HUNGRY && state[(phnum + 1) % N] != EATING && state[(phnum + 2) % N] != EATING && bowls_available > 0)
+    {
+        // state that eating
+        state[phnum] = EATING;
+
+        pthread_cond_signal(&cond[phnum]);
+        bowls_available--;
+    }
+}
+
+void take_fork(int phnum)
+{
+    pthread_mutex_lock(&mutex);
+
+    // state that hungry
+    state[phnum] = HUNGRY;
+
+    printf("Philosopher %d is Hungry\n", phnum + 1);
+
+    // eat if neighbors are not eating and there is a bowl available
+    test(phnum);
+
+    while (state[phnum] != EATING)
+        pthread_cond_wait(&cond[phnum], &mutex);
+
+    pthread_mutex_unlock(&mutex);
+}
+
+void put_fork(int phnum)
+{
+    pthread_mutex_lock(&mutex);
+
+    // state that thinking
+    state[phnum] = THINKING;
+
+    printf("Forks available:  ");
+	for(int i =  0 ; i < N ; i++){
+		printf(" %d ",phil[i]);
+	}
+	printf("\n");
+
+    test((phnum + 1) % N);
+    test((phnum + 2) % N);
+
+    pthread_mutex_unlock(&mutex);
+}
+
+void *philosopher(void *num)
+{
+    while (1)
+    {
+        int *i = num;
+
+        thinking(*i);
+
+        take_fork(*i);
+
+        eating(*i);
+
+        put_fork(*i);
+
+        pthread_mutex_lock(&bowl_mutex);
+        bowls_available++;
+        pthread_cond_signal(&bowl_cond);
+        pthread_mutex_unlock(&bowl_mutex);
+    }
+}
+
+int main()
+{
+    pthread_t thread_id[N];
+
+    // initialize the mutex and conditions
+    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&bowl_mutex, NULL);
+    pthread_cond_init(&bowl_cond, NULL);
+
+    for (int i = 0; i < N; i++)
+        pthread_cond_init(&cond[i], NULL);
+
+    for (int i = 0; i < N; i++)
+    {
+        pthread_create(&thread_id[i], NULL, philosopher, &phil[i]);
+        printf("Philosopher %d is thinking\n", i + 1);
     }
 
+    for (int i = 0; i < N; i++)
+        pthread_join(thread_id[i], NULL);
 
-    // Wait for threads to finish
-    pthread_join(thread0, NULL);
-    pthread_join(thread1, NULL);
-    pthread_join(thread2, NULL);
-    pthread_join(thread3, NULL);
-    pthread_join(thread4, NULL);
+    // destroy mutex and conditions
+    pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&bowl_mutex);
+    pthread_cond_destroy(&bowl_cond);
+    for (int i = 0; i < N; i++)
+        pthread_cond_destroy(&cond[i]);
 
     return 0;
 }
