@@ -61,13 +61,10 @@ void put_fork(int phnum)
 {
     pthread_mutex_lock(&mutex);
 
-    // state that thinking
+    // idhar thinking aaega
     state[phnum] = THINKING;
 
-    printf("Forks available:  ");
-	for(int i =  0 ; i < N ; i++){
-		printf(" %d ",phil[i]);
-	}
+    
 	printf("\n");
 
     test((phnum + 1) % N);
@@ -112,7 +109,7 @@ int main()
     for (int i = 0; i < N; i++)
     {
         pthread_create(&thread_id[i], NULL, philosopher, &phil[i]);
-        printf("Philosopher %d is thinking\n", i + 1);
+        // printf("Philosopher %d is thinking\n", i + 1);
     }
 
     for (int i = 0; i < N; i++)
