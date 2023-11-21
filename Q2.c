@@ -14,7 +14,7 @@ bool deBoardingAllowed = false;
 void load() {
     sleep(1);
     printf("Loading completed\n");
-    fflush(stdout);
+    //fflush(stdout);
     boardingAllowed = true;
 } 
 
@@ -47,7 +47,9 @@ void car() {
         int current_passengers;
         sem_getvalue(&passengers,&current_passengers); 
         while (current_passengers != 0) {
+            sem_wait(&mutex);
             sem_getvalue(&passengers,&current_passengers);
+            sem_post(&mutex);
         }
         boardingAllowed = false;
         sem_wait(&mutex);
@@ -61,18 +63,20 @@ void board(int curr) {
     //sem_wait(&mutex);
     sem_wait(&passengers);
     printf("Passenger %d boarding \n",curr);
-    sleep(1);
     fflush(stdout);
+    fflush(stdout);
+    sleep(1);
     //sem_post(&mutex);
 }                 
 
 void offboard(int curr) {
-    sem_wait(&mutex);
+    //sem_wait(&mutex);
     sem_post(&passengers);
     printf("Passenger %d deboarding \n",curr);
-    sleep(1);
     fflush(stdout);
-    sem_post(&mutex);
+    fflush(stdout);
+    sleep(1);
+    //sem_post(&mutex);
 }   
 
 void passenger() {
