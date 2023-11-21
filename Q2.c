@@ -1,79 +1,98 @@
-#include <stdio.h>
+#include<stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <unistd.h>
 
-#define MAX_PASSENGERS 100
-
-int total_passengers;
-int car_capacity;
-int passengers_on_board = 0;
-
-sem_t mutex, boarding_queue, unboarding_queue, ride_start, ride_end;
+int total_passengers, car_capacity;
+int passenger_id = 0;
+sem_t mutex,passengers;
+bool boardingAllowed = false;
+bool deBoardingAllowed = false;
 
 void load() {
-    printf("Car is loading passengers.\n");
+    sleep(1);
+    printf("Loading completed\n");
+    fflush(stdout);
+    boardingAllowed = true;
+} 
+
+void passing() {
+    boardingAllowed = false;
+    printf("Car is running\n");
+    fflush(stdout);
     sleep(1);
 }
 
 void unload() {
-    printf("Car is unloading passengers.\n");
     sleep(1);
-}
+    printf("Unloading completed\n");
+    fflush(stdout);
+    deBoardingAllowed = true;
+    sem_post(&mutex);
+    int curr_passengers;
+    sem_getvalue(&passengers,&curr_passengers);
+    while (curr_passengers != car_capacity) {
+        sem_getvalue(&passengers,&curr_passengers);
+    }
+    deBoardingAllowed = false;
+}    
 
-void board(int passenger_id) {
-    printf("Passenger %d is boarding.\n", passenger_id);
-    sleep(1);
-}
-
-void offboard(int passenger_id) {
-    printf("Passenger %d is getting off.\n", passenger_id);
-    sleep(1);
-}
-
-void* car(void* args) {
-    while (1) {
+void car() {
+    while (true) {
+        sem_wait(&mutex);
         load();
-        sem_wait(&boarding_queue);  // Wait for passengers to board
-        sem_post(&ride_start);      // Signal to passengers that the ride has started
-        sem_wait(&unboarding_queue);  // Wait for passengers to get off
-        unload();
-        passengers_on_board = 0;    // Reset passenger count
-        sem_post(&ride_end);        // Signal to passengers that the ride has ended
-    }
-    pthread_exit(NULL);
-}
-
-void* passenger(void* args) {
-    int passenger_id = *((int*)args);
-
-    while (1) {
-        sem_wait(&mutex);  // Enter critical section
-        if (passengers_on_board < car_capacity) {
-            passengers_on_board++;
-            board(passenger_id);
-            if (passengers_on_board == car_capacity) {
-                sem_post(&boarding_queue);  // Signal to car that it can start
-            }
-            sem_post(&mutex);  // Exit critical section
-            sem_wait(&ride_start);  // Wait for the ride to start
-            offboard(passenger_id);
-            sem_post(&unboarding_queue);  // Signal to car that passenger has disembarked
-            sem_wait(&ride_end);  // Wait for the ride to end
-        } else {
-            sem_post(&mutex);  // If car is full, release mutex and try again
+        sem_post(&mutex);
+        int current_passengers;
+        sem_getvalue(&passengers,&current_passengers); 
+        while (current_passengers != 0) {
+            sem_getvalue(&passengers,&current_passengers);
         }
-        sleep(1);  // Simulate time between attempts
+        boardingAllowed = false;
+        sem_wait(&mutex);
+        passing();
+        unload();
+        
     }
-    pthread_exit(NULL);
-}
+}                 
+
+void board(int curr) {
+    //sem_wait(&mutex);
+    sem_wait(&passengers);
+    printf("Passenger %d boarding \n",curr);
+    sleep(1);
+    fflush(stdout);
+    //sem_post(&mutex);
+}                 
+
+void offboard(int curr) {
+    sem_wait(&mutex);
+    sem_post(&passengers);
+    printf("Passenger %d deboarding \n",curr);
+    sleep(1);
+    fflush(stdout);
+    sem_post(&mutex);
+}   
+
+void passenger() {
+    int curr_passenger_id = passenger_id++;
+    while (true) {
+        if (boardingAllowed) {
+            board(curr_passenger_id);
+            while (!deBoardingAllowed) {
+                continue;
+            }
+            offboard(curr_passenger_id);
+        }
+        //board(curr_passenger_id);
+    }
+}   
+
+        
 
 int main() {
-    pthread_t car_thread, passenger_threads[MAX_PASSENGERS];
-    int passenger_ids[MAX_PASSENGERS];
-
-    // Input total number of passengers and car capacity
+    pthread_t car_thread;
     printf("Enter total number of passengers: ");
     scanf("%d", &total_passengers);
     printf("Enter car capacity: ");
@@ -83,37 +102,27 @@ int main() {
         printf("Invalid input.\n");
         return 1;
     }
+    sem_init(&mutex,0,1);
+    sem_init(&passengers,0,car_capacity);
+    //sem_init(&load,0,1);
 
-    // Initialize semaphores
-    sem_init(&mutex, 0, 1);
-    sem_init(&boarding_queue, 0, 0);
-    sem_init(&unboarding_queue, 0, 0);
-    sem_init(&ride_start, 0, 0);
-    sem_init(&ride_end, 0, 0);
+    pthread_t passenger_threads[total_passengers];
 
-    // Create car thread
-    pthread_create(&car_thread, NULL, car, NULL);
+    pthread_create(&car_thread, NULL,(void*)&car,NULL);
 
-    // Create passenger threads
-    for (int i = 0; i < total_passengers; i++) {
-        passenger_ids[i] = i + 1;
-        pthread_create(&passenger_threads[i], NULL, passenger, &passenger_ids[i]);
+    for (int i=0;i<total_passengers;i++) {
+        pthread_create(&passenger_threads[i],NULL,(void*)&passenger,NULL);
     }
 
-    // Join car thread
     pthread_join(car_thread, NULL);
-
-    // Join passenger threads
     for (int i = 0; i < total_passengers; i++) {
         pthread_join(passenger_threads[i], NULL);
     }
 
-    // Destroy semaphores
     sem_destroy(&mutex);
-    sem_destroy(&boarding_queue);
-    sem_destroy(&unboarding_queue);
-    sem_destroy(&ride_start);
-    sem_destroy(&ride_end);
+    sem_destroy(&passengers);
+
+
 
     return 0;
 }
